@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  yaml-lint:
+    name: YAML Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install yamllint
+        run: pip install yamllint
+      - name: Run yamllint
+        run: yamllint -c .yamllint .
+
+  compose-validate:
+    name: Docker Compose Validate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        stack: [vm_monitor, vm_container]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create .env from example
+        working-directory: ${{ matrix.stack }}
+        run: cp .env.example .env
+      - name: Validate compose file
+        working-directory: ${{ matrix.stack }}
+        run: docker compose config --quiet
+
+  prometheus-validate:
+    name: Prometheus Config & Rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: promtool check config
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/vm_monitor/prometheus:/etc/prometheus:ro \
+            --entrypoint promtool \
+            prom/prometheus:v3.12.0 \
+            check config /etc/prometheus/prometheus.yml
+      - name: promtool check rules
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/vm_monitor/prometheus:/etc/prometheus:ro \
+            --entrypoint promtool \
+            prom/prometheus:v3.12.0 \
+            check rules /etc/prometheus/alert.rules.yml
+
+  alertmanager-validate:
+    name: Alertmanager Config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Substitute placeholders (same as start.sh)
+        run: |
+          export ALERT_EMAIL_FROM=ci@example.com
+          export ALERT_EMAIL_PASSWORD=ci-dummy
+          export ALERT_EMAIL_TO=ci@example.com
+          sed \
+            -e "s|\${ALERT_EMAIL_FROM}|${ALERT_EMAIL_FROM}|g" \
+            -e "s|\${ALERT_EMAIL_PASSWORD}|${ALERT_EMAIL_PASSWORD}|g" \
+            -e "s|\${ALERT_EMAIL_TO}|${ALERT_EMAIL_TO}|g" \
+            vm_monitor/alertmanager/config.yml > /tmp/alertmanager.yml
+      - name: amtool check-config
+        run: |
+          docker run --rm \
+            -v /tmp/alertmanager.yml:/tmp/alertmanager.yml:ro \
+            --entrypoint amtool \
+            prom/alertmanager:v0.33.0 \
+            check-config /tmp/alertmanager.yml
+
+  loki-promtail-validate:
+    name: Loki & Promtail Config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Loki verify-config
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/vm_monitor/loki:/etc/loki:ro \
+            grafana/loki:3.6.12 \
+            -config.file=/etc/loki/config.yml -verify-config
+      - name: Promtail check-syntax
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/vm_container/promtail:/etc/promtail:ro \
+            grafana/promtail:3.6.11 \
+            -config.file=/etc/promtail/config.yml -check-syntax
+
+  grafana-validate:
+    name: Grafana Dashboards JSON
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate dashboard JSON
+        run: |
+          for f in vm_monitor/grafana/dashboards/*.json; do
+            echo "Checking $f"
+            python3 -m json.tool "$f" > /dev/null
+          done

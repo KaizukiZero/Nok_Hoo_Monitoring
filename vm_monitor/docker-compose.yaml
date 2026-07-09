@@ -1,0 +1,217 @@
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+
+services:
+  alertmanager:
+    image: prom/alertmanager:v0.33.0
+    container_name: alertmanager-mst
+    hostname: alertmanager-mst
+    restart: always
+    env_file: .env
+    volumes:
+      - ./alertmanager/config.yml:/etc/alertmanager/config.yml:ro
+      - ./alertmanager/start.sh:/start.sh:ro
+    environment:
+      TZ: ${TZ}
+    entrypoint: ["/bin/sh", "/start.sh"]
+    ports:
+      - "9093:9093"
+    networks:
+      - monitoring
+    labels:
+      org.label-schema.group: "monitoring"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9093/-/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    cpuset: "0-3"
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+        reservations:
+          cpus: '1'
+          memory: 512m
+
+  loki:
+    image: grafana/loki:3.6.12
+    container_name: loki-mst
+    hostname: loki-mst
+    restart: always
+    volumes:
+      - ./loki/config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    environment:
+      TZ: ${TZ}
+    ports:
+      - "3100:3100"
+    networks:
+      - monitoring
+    labels:
+      org.label-schema.group: "monitoring"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3100/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    cpuset: "0-3"
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+        reservations:
+          cpus: '1'
+          memory: 512m
+
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.27.0
+    container_name: blackbox-mst
+    hostname: blackbox-mst
+    restart: always
+    extra_hosts:
+      - "vm_container:192.168.1.200"
+    ports:
+      - "9115:9115"
+    networks:
+      - monitoring
+    labels:
+      org.label-schema.group: "monitoring"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9115/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    cpuset: "0-3"
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+        reservations:
+          cpus: '1'
+          memory: 512m
+
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.19.1
+    container_name: postgres-exporter-mst
+    hostname: postgres-exporter-mst
+    restart: always
+    environment:
+      TZ: ${TZ}
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/postgres?sslmode=disable"
+    ports:
+      - "9187:9187"
+    networks:
+      - monitoring
+    labels:
+      org.label-schema.group: "monitoring"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9187/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    cpuset: "0-3"
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+        reservations:
+          cpus: '1'
+          memory: 512m
+
+
+  prometheus:
+    image: prom/prometheus:v3.12.0
+    container_name: prometheus-mst
+    hostname: prometheus-mst
+    restart: always
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    environment:
+      TZ: ${TZ}
+    extra_hosts:
+      - "vm_container:192.168.1.200"
+    ports:
+      - "9090:9090"
+    networks:
+      - monitoring
+    labels:
+      org.label-schema.group: "monitoring"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    cpuset: "0-3"
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+        reservations:
+          cpus: '1'
+          memory: 512m
+
+
+  grafana:
+    image: grafana/grafana:13.1.0
+    container_name: grafana-mst
+    hostname: grafana-mst
+    restart: always
+    environment:
+      TZ: ${TZ}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin123}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    networks:
+      - monitoring
+    depends_on:
+      - prometheus
+    labels:
+      org.label-schema.group: "monitoring"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    cpuset: "0-3"
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+        reservations:
+          cpus: '1'
+          memory: 512m

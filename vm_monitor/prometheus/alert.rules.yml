@@ -1,0 +1,107 @@
+groups:
+
+  - name: disk_space
+    rules:
+      - alert: LowDiskSpaceCritical
+        expr: node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs", mountpoint="/"} < 10737418240
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Low disk on {{ $labels.instance }} ({{ $labels.mountpoint }})"
+          description: "Free disk is {{ $value | humanize }}B — less than 10 GB"
+
+  - name: resource_warning
+    rules:
+      - alert: HighCPUWarning
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[3m])) * 100) > 70
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ $labels.instance }}"
+          description: "CPU {{ printf \"%.1f\" $value }}%"
+
+      - alert: HighRAMWarning
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 70
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High RAM on {{ $labels.instance }}"
+          description: "RAM {{ printf \"%.1f\" $value }}%"
+
+      - alert: HighDiskWarning
+        expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs"} / node_filesystem_size_bytes) * 100 > 70
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Disk on {{ $labels.instance }} ({{ $labels.mountpoint }})"
+          description: "Disk {{ printf \"%.1f\" $value }}%"
+
+  - name: resource_critical
+    rules:
+      - alert: HighCPUCritical
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[3m])) * 100) > 90
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical CPU on {{ $labels.instance }}"
+          description: "CPU {{ printf \"%.1f\" $value }}%"
+
+      - alert: HighRAMCritical
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical RAM on {{ $labels.instance }}"
+          description: "RAM {{ printf \"%.1f\" $value }}%"
+
+      - alert: HighDiskCritical
+        expr: (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|fuse.lxcfs"} / node_filesystem_size_bytes) * 100 > 90
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical Disk on {{ $labels.instance }} ({{ $labels.mountpoint }})"
+          description: "Disk {{ printf \"%.1f\" $value }}%"
+
+  - name: service_down
+    rules:
+      - alert: ContainerDown
+        expr: absent(container_last_seen{name=~"app-web-.*"})
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Container {{ $labels.name }} is down"
+
+      - alert: HttpEndpointDown
+        expr: probe_success{job="blackbox-nginx"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "HTTP endpoint down: {{ $labels.instance }}"
+
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down ({{ $labels.instance }})"
+
+  - name: postgres_warning
+    rules:
+      - alert: PostgresHighConnections
+        expr: pg_stat_database_numbackends / pg_settings_max_connections * 100 > 80
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL connections > 80%"
+          description: "{{ printf \"%.1f\" $value }}% used"

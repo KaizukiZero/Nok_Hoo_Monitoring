@@ -1,0 +1,71 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: docker-monitoring-stack
+
+rule_files:
+  - alert.rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: cadvisor-vm1
+    scrape_interval: 10s
+    static_configs:
+      - targets: ["vm_container:8080"]
+        labels:
+          vm: vm1
+    metric_relabel_configs:
+      - source_labels: [name]
+        regex: "/(.+)"
+        target_label: name
+        replacement: "$1"
+      - source_labels: [container_label_com_docker_compose_service]
+        regex: "(.+)"
+        target_label: name
+        replacement: "$1"
+      - source_labels: [name]
+        regex: "app-web-.*"
+        action: keep
+
+  - job_name: node-vm1
+    static_configs:
+      - targets: ["vm_container:9100"]
+        labels:
+          vm: vm1
+
+  - job_name: blackbox-nginx
+    metrics_path: /
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://vm_container:8081
+          - http://vm_container:8082
+          - http://vm_container:8083
+          - http://vm_container:8084
+          - http://vm_container:8085
+          - http://vm_container:8086
+          - http://vm_container:8087
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+        labels:
+          db_host: "localhost"

@@ -1,0 +1,238 @@
+networks:
+  monitoring:
+    driver: bridge
+
+services:
+
+  app-web-1:
+    image: nginx:stable-alpine
+    container_name: app-web-1
+    hostname: app-web-1
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    networks:
+      - monitoring
+
+  app-web-2:
+    image: nginx:stable-alpine
+    container_name: app-web-2
+    hostname: app-web-2
+    restart: unless-stopped
+    ports:
+      - "8082:80"
+    networks:
+      - monitoring
+
+  app-web-3:
+    image: nginx:stable-alpine
+    container_name: app-web-3
+    hostname: app-web-3
+    restart: unless-stopped
+    ports:
+      - "8083:80"
+    networks:
+      - monitoring
+
+  app-web-4:
+    image: nginx:stable-alpine
+    container_name: app-web-4
+    hostname: app-web-4
+    restart: unless-stopped
+    ports:
+      - "8084:80"
+    networks:
+      - monitoring
+
+  app-web-5:
+    image: nginx:stable-alpine
+    container_name: app-web-5
+    hostname: app-web-5
+    restart: unless-stopped
+    ports:
+      - "8085:80"
+    networks:
+      - monitoring
+
+  app-web-6:
+    image: nginx:stable-alpine
+    container_name: app-web-6
+    hostname: app-web-6
+    restart: unless-stopped
+    ports:
+      - "8086:80"
+    networks:
+      - monitoring
+
+  app-web-7:
+    image: nginx:stable-alpine
+    container_name: app-web-7
+    hostname: app-web-7
+    restart: unless-stopped
+    ports:
+      - "8087:80"
+    networks:
+      - monitoring
+
+  node-exporter:
+    image: prom/node-exporter:v1.11.1
+    container_name: node-exporter-mst
+    hostname: node-exporter-mst
+    restart: always
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro,rslave
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/host/root"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    environment:
+      TZ: ${TZ}
+    ports:
+      - "9100:9100"
+    networks:
+    - monitoring
+    labels:
+      org.label-schema.group: "monitoring"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9100/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    cpuset: "0-3"
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      rollback_config:
+        parallelism: 0
+        delay: 10s
+        failure_action: pause
+        monitor: 10s
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+        reservations:
+          cpus: '1'
+          memory: 512m
+
+  promtail:
+    image: grafana/promtail:3.6.11
+    container_name: promtail-mst
+    hostname: promtail-mst
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./promtail/config.yml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    environment:
+      TZ: ${TZ}
+    extra_hosts:
+      - "vm_monitor:192.168.1.201"
+    ports:
+      - "9080:9080"
+    networks:
+    - monitoring
+    labels:
+      org.label-schema.group: "monitoring"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9080/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    cpuset: "0-3"
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      rollback_config:
+        parallelism: 0
+        delay: 10s
+        failure_action: pause
+        monitor: 10s
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+        reservations:
+          cpus: '1'
+          memory: 512m
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    container_name: cadvisor-mst
+    hostname: cadvisor-mst
+    restart: always
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    command:
+      - "--docker_only=true"
+      - "--housekeeping_interval=10s"
+    environment:
+      TZ: ${TZ}
+    ports:
+      - "8080:8080"
+    networks:
+    - monitoring
+    labels:
+      org.label-schema.group: "monitoring"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    cpuset: "0-3"
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      rollback_config:
+        parallelism: 0
+        delay: 10s
+        failure_action: pause
+        monitor: 10s
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2048m
+        reservations:
+          cpus: '1'
+          memory: 512m
