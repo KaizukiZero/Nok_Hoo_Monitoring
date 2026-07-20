@@ -25,6 +25,8 @@ yamllint .                        # lint yaml (config: .yamllint, relaxed, line-
 curl -X POST http://192.168.1.201:9090/-/reload   # hot-reload prometheus.yml, no restart
 ```
 
-Secrets live in git-ignored `.env` per stack (`.env.example` is the template) — see root `CLAUDE.md` universal rules.
+Secrets live in git-ignored `.env` per stack (`.env.example` is the template, vars explained in `docs/DEPLOY.md`) — see root `CLAUDE.md` universal rules. Full deploy steps: `docs/DEPLOY.md`. Common failures: `docs/TROUBLESHOOTING.md`.
+
+`vm_monitor/alertmanager/start.sh` substitutes the email env vars (`ALERT_EMAIL_FROM/PASSWORD/TO`) into `config.yml` via `sed` before Alertmanager starts — that's why alertmanager doesn't just point at `config.yml` directly.
 
 Adding a monitored host: deploy `vm_container/` compose there, add a Prometheus scrape job + `extra_hosts` entry in `vm_monitor/prometheus/prometheus.yml`, reload.
